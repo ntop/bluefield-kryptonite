@@ -1,7 +1,8 @@
 # Kryptonite
 This repository provides a test/benchmarking tool for **BlueField SuperNICs**.
 This tool is implementing (PoC level) a NetFlow-like application that offloads flow 
-processing to the **DPU** by leveraging on **DOCA Flow CT**.
+processing to the **DPU** by leveraging on **DOCA Flow CT** and can run on an
+interface pair, both in passive mode or with packet forwarding.
 It can run both on the DPU (ARM cores) or on the host.
 
 Compatible with:
