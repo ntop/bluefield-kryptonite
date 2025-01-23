@@ -33,6 +33,9 @@ Compatible with:
    make
 
 3. **Run**
+   > Please refer to the DOCA Flow CT documentation to configure the adapter
+   > before running the tool.
+
    ```
    sudo ./kryptonite -- -p c7:00.0
 
