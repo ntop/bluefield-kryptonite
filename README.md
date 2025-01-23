@@ -26,7 +26,7 @@ Compatible with:
 1. **Clone the repository**
    ```bash
    git clone https://github.com/ntop/bluefield-kryptonite.git
-   cd bluefield-kryptonite.git
+   cd bluefield-kryptonite
 
 2. **Compile**
 
