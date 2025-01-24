@@ -93,6 +93,7 @@ struct dpdk_config {
 struct app_context {
 	/* Configuration */
 	int num_ports;    /* number of configured ports */
+	u_int16_t num_rss_queues; /* number of RSS queues */
 	int idle_timeout; /* flow idle timeout */
 	int verbosity;    /* verbosity level */
 	bool enable_fwd;
@@ -204,16 +205,19 @@ destroy_pipe_cfg:
  * Create RSS pipe
  *
  * @port: Pipe port
+ * @num_rss_queues: Number of RSS queues
  * @status: User context for adding entry
  * @pipe: Created pipe
  */
 doca_error_t create_rss_pipe(struct doca_flow_port *port,
+			     u_int16_t num_rss_queues,
 			     struct pipe_entries_status *status,
 			     struct doca_flow_pipe **pipe /* out */) {
 	struct doca_flow_pipe_cfg *cfg;
 	struct doca_flow_match match = { 0 };
 	struct doca_flow_fwd fwd = { 0 };
-	u_int16_t rss_queues[1];
+	u_int16_t rss_queues[num_rss_queues];
+	int i;
 	doca_error_t rc;
 
 	rc = doca_flow_pipe_cfg_create(&cfg, port);
@@ -235,11 +239,12 @@ doca_error_t create_rss_pipe(struct doca_flow_port *port,
 	}
 
 	/* RSS queue (send matched traffic to queue 0) */
-	rss_queues[0] = 0;
+	for (i = 0; i < num_rss_queues; i++)
+		rss_queues[i] = i;
 	fwd.type = DOCA_FLOW_FWD_RSS;
 	fwd.rss_queues = rss_queues;
 	fwd.rss_outer_flags = DOCA_FLOW_RSS_IPV4 | DOCA_FLOW_RSS_UDP | DOCA_FLOW_RSS_TCP;
-	fwd.num_of_queues = 1;
+	fwd.num_of_queues = num_rss_queues;
 
 	rc = doca_flow_pipe_create(cfg, &fwd, NULL, pipe);
 	if (rc != DOCA_SUCCESS) {
@@ -930,7 +935,7 @@ doca_error_t run_flow_ct(struct app_context *app_context,
 		goto cleanup;
 	num_entries++;
 
-	rc = create_rss_pipe(ports[0], &ctrl_status, &rss_pipe);
+	rc = create_rss_pipe(ports[0], app_context->num_rss_queues, &ctrl_status, &rss_pipe);
 	if (rc != DOCA_SUCCESS)
 		goto cleanup;
 	num_entries++;
@@ -992,7 +997,7 @@ doca_error_t init_doca_flow(int num_queues,
 			    doca_flow_entry_process_cb callback) {
 	struct doca_flow_cfg *flow_cfg;
 	u_int16_t queue_id;
-	u_int16_t rss_queues[num_queues];
+	u_int16_t queues[num_queues];
 	struct doca_flow_resource_rss_cfg rss = {0};
 	doca_error_t rc, tmp_rc;
 	int i;
@@ -1004,9 +1009,9 @@ doca_error_t init_doca_flow(int num_queues,
 	}
 
 	for (queue_id = 0; queue_id < num_queues; queue_id++)
-		rss_queues[queue_id] = queue_id;
+		queues[queue_id] = queue_id;
 
-	rss.queues_array = rss_queues;
+	rss.queues_array = queues;
 	rss.nr_queues = num_queues;
 
 	rc = doca_flow_cfg_set_default_rss(flow_cfg, &rss);
@@ -1676,6 +1681,18 @@ doca_error_t set_pci_addr(void *param, void *config) {
 }
 
 /*
+ * Set number of RSS queues
+ */
+doca_error_t set_rss_queues(void *param, void *config) {
+	struct app_context *app_context = (struct app_context *) config;
+	int *rss_queues_ptr = (int *) param;
+
+	app_context->num_rss_queues = *rss_queues_ptr;
+
+	return DOCA_SUCCESS;
+}
+
+/*
  * Set flow idle timeout
  */
 doca_error_t set_idle_timeout(void *param, void *config) {
@@ -1788,6 +1805,12 @@ doca_error_t register_doca_params() {
 	if (rc != DOCA_SUCCESS)
 		return rc;
 
+	/* RSS queues */
+	register_doca_param("r", "rss-queues", "Number of RSS queues (default: 1)",
+		set_rss_queues, DOCA_ARGP_TYPE_INT, 0, 0);
+	if (rc != DOCA_SUCCESS)
+		return rc;
+
 	/* Idle timeout */
 	register_doca_param("d", "idle-timeout", "Maximum (seconds) flow idle lifetime (default: 60)",
 		set_idle_timeout, DOCA_ARGP_TYPE_INT, 0, 0);
@@ -1849,6 +1872,7 @@ int main(int argc, char **argv) {
 	app_context->idle_timeout = DEFAULT_IDLE_TIMEOUT;
 	app_context->ct_status = &ct_status;
 	app_context->verbosity = 1;
+	app_context->num_rss_queues = 1;
 
 	/* Read parameters */
 
@@ -1872,6 +1896,9 @@ int main(int argc, char **argv) {
 		goto cleanup_dpdk;
 	}
 
+	dpdk_config.num_queues = app_context->num_rss_queues + 1;
+	ct_status.export_on_delete = app_context->enable_export;
+
 	/* Create logger for DOCA warnings */
 
 	if (app_context->verbosity > 0) {
@@ -1887,8 +1914,6 @@ int main(int argc, char **argv) {
 		if (rc != DOCA_SUCCESS)
 			goto cleanup_argp;
 	}
-
-	ct_status.export_on_delete = app_context->enable_export;
 
 	/* Allocate software flow table */
 
