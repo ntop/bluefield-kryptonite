@@ -238,7 +238,7 @@ doca_error_t create_rss_pipe(struct doca_flow_port *port,
 	rss_queues[0] = 0;
 	fwd.type = DOCA_FLOW_FWD_RSS;
 	fwd.rss_queues = rss_queues;
-	fwd.rss_outer_flags = DOCA_FLOW_RSS_IPV4 | DOCA_FLOW_RSS_UDP;
+	fwd.rss_outer_flags = DOCA_FLOW_RSS_IPV4 | DOCA_FLOW_RSS_UDP | DOCA_FLOW_RSS_TCP;
 	fwd.num_of_queues = 1;
 
 	rc = doca_flow_pipe_create(cfg, &fwd, NULL, pipe);
