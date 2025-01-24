@@ -1688,6 +1688,8 @@ doca_error_t set_rss_queues(void *param, void *config) {
 	int *rss_queues_ptr = (int *) param;
 
 	app_context->num_rss_queues = *rss_queues_ptr;
+	if (app_context->num_rss_queues < 1)
+		app_context->num_rss_queues = 1;
 
 	return DOCA_SUCCESS;
 }
@@ -1914,6 +1916,9 @@ int main(int argc, char **argv) {
 		if (rc != DOCA_SUCCESS)
 			goto cleanup_argp;
 	}
+
+	if (app_context->num_rss_queues > 1)
+		DOCA_LOG_WARN("Multiple RSS queues configured, but only the first one will be polled");
 
 	/* Allocate software flow table */
 
