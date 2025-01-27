@@ -55,6 +55,9 @@
 
 //#define DEBUG
 
+//#define PROFILING
+#define PROFILING_N 2000000
+
 /**********************************************************/
 
 /* Software flow table entry */
@@ -108,6 +111,8 @@ struct app_context {
 
 DOCA_LOG_REGISTER(KRYPTONITE);
 
+static struct app_context app_ctx = {0};
+
 /**********************************************************/
 
 doca_error_t init_doca_flow(int num_queues, const char *mode, doca_flow_entry_process_cb callback);
@@ -121,7 +126,7 @@ void dump_port_stats(struct app_context *app_context, u_int16_t port_id);
 
 /**********************************************************/
 
-static struct app_context app_ctx = {0};
+#define SEC2NSEC(s) ((u_int64_t) s * 1000000000)
 
 /**********************************************************/
 
@@ -498,11 +503,16 @@ doca_error_t run_capture(struct app_context *app_context,
 	u_int16_t num_packets;
 	bool conn_found = false;
 	u_int8_t tcp_state;
+	struct timespec now;
+	u_int64_t now_ns;
+	u_int64_t last_export_ns = 0;
 	doca_error_t rc;
 	int ret;
 	int i;
-	time_t now;
-	time_t last_export = 0;
+#ifdef PROFILING
+	u_int64_t profiling_start_ns = 0;
+	u_int64_t profiling_elaps_ns = 0;
+#endif
 
 	DOCA_LOG_INFO("Running...");
 
@@ -515,10 +525,11 @@ doca_error_t run_capture(struct app_context *app_context,
 			usleep(1);
 
 			if (app_context->enable_export) {
-				now = time(NULL);
-				if (now > last_export + EXPORT_FREQ_SEC) {
+				clock_gettime(CLOCK_MONOTONIC_RAW, &now);
+				now_ns = SEC2NSEC(now.tv_sec) + now.tv_nsec;
+				if (now_ns > last_export_ns + SEC2NSEC(EXPORT_FREQ_SEC)) {
 					export_flows(app_context, ct_queue);
-					last_export = now;
+					last_export_ns = now_ns;
 				}
 			}
 
@@ -548,6 +559,14 @@ doca_error_t run_capture(struct app_context *app_context,
 					/* Already present: nothing to do */
 				} else {
 					/*** Add flow entry to CT ***/
+
+#ifdef PROFILING
+					if (app_context->num_total_packets == 1) {
+						clock_gettime(CLOCK_MONOTONIC_RAW, &now);
+						now_ns = SEC2NSEC(now.tv_sec) + now.tv_nsec;
+						profiling_start_ns = now_ns;
+					}
+#endif
 
 					flags = DOCA_FLOW_CT_ENTRY_FLAGS_ALLOC_ON_MISS
 						| DOCA_FLOW_CT_ENTRY_FLAGS_DUP_FILTER_ORIGIN
@@ -609,6 +628,19 @@ doca_error_t run_capture(struct app_context *app_context,
 									}
 								}
 							}
+
+#ifdef PROFILING
+							if (app_context->num_total_packets == PROFILING_N) {
+								clock_gettime(CLOCK_MONOTONIC_RAW, &now);
+								now_ns = SEC2NSEC(now.tv_sec) + now.tv_nsec;
+								profiling_elaps_ns = now_ns - profiling_start_ns;
+								DOCA_LOG_ERR("%u records created in %.1f usec (%.0f K/s)",
+									     PROFILING_N,
+									     (double) profiling_elaps_ns/1000,
+									     ((double) PROFILING_N/profiling_elaps_ns)*1000000);
+							}
+#endif
+
 						}
 					} else {
 						DOCA_LOG_INFO("Already present?");
@@ -1503,6 +1535,7 @@ void dump_port_stats(struct app_context *app_context, u_int16_t port_id) {
 	const char clr[] = { 27, '[', '2', 'J', '\0' };
 	const char top_left[] = { 27, '[', '1', ';', '1', 'H', '\0' };
 	struct timespec now;
+	u_int64_t now_ns;
 	u_int32_t i;
 	int rc;
 
@@ -1521,14 +1554,14 @@ void dump_port_stats(struct app_context *app_context, u_int16_t port_id) {
 		num_rx_queues = dev_info.nb_rx_queues;
 
 	printf("\nPort %-2d abs stats:\n"
-		"RX-packets: %-10" PRIu64 "\n"
-		"RX-missed: %-10" PRIu64 "\n"
-		"RX-bytes:  %-" PRIu64 "\n"
-		"RX-errors: %-" PRIu64 "\n"
-		"RX-nombuf:  %-10" PRIu64 "\n"
-		"TX-packets: %-10" PRIu64 "\n"
-		"TX-errors: %-10" PRIu64 "\n"
-		"TX-bytes:  %-" PRIu64 "\n",
+		"RX-packets:\t%12" PRIu64 "\n"
+		"RX-missed:\t%12" PRIu64 "\n"
+		"RX-bytes:\t%12" PRIu64 "\n"
+		"RX-errors:\t%12" PRIu64 "\n"
+		"RX-nombuf:\t%12" PRIu64 "\n"
+		"TX-packets:\t%12" PRIu64 "\n"
+		"TX-errors:\t%12" PRIu64 "\n"
+		"TX-bytes:\t%12" PRIu64 "\n",
 		port_id,
 		port_stats.ipackets,
 		port_stats.imissed,
@@ -1541,11 +1574,11 @@ void dump_port_stats(struct app_context *app_context, u_int16_t port_id) {
 
 	if (app_context->verbosity > 2) {
 		for (i = 0; i < num_rx_queues; i++) {
-			printf("Queue %2d RX-packets: %-10" PRIu64 "  "
-				"RX-errors: %-10" PRIu64 " "
-				"RX-bytes: %-10" PRIu64 " "
-				"TX-packets: %-10" PRIu64 " "
-				"TX-bytes: %-10" PRIu64 "\n",
+			printf("Queue %2d RX-packets: %" PRIu64 "  "
+				"RX-errors: %" PRIu64 " "
+				"RX-bytes: %" PRIu64 " "
+				"TX-packets: %" PRIu64 " "
+				"TX-bytes: %" PRIu64 "\n",
 				i,
 				port_stats.q_ipackets[i],
 				port_stats.q_errors[i],
@@ -1555,15 +1588,14 @@ void dump_port_stats(struct app_context *app_context, u_int16_t port_id) {
 		}
 	}
 
+	clock_gettime(CLOCK_MONOTONIC_RAW, &now);
+	now_ns = SEC2NSEC(now.tv_sec) + now.tv_nsec;
+
 	diff_ns = 0;
-	if (clock_gettime(CLOCK_MONOTONIC_RAW, &now) == 0) {
-		u_int64_t now_ns = (now.tv_sec * 1000000000) + now.tv_nsec;
+	if (prev_ns[port_id] != 0)
+		diff_ns = now_ns - prev_ns[port_id];
 
-		if (prev_ns[port_id] != 0)
-			diff_ns = now_ns - prev_ns[port_id];
-
-		prev_ns[port_id] = now_ns;
-	}
+	prev_ns[port_id] = now_ns;
 
 	diff_pkts_rx = counter_diff(port_stats.ipackets, prev_pkts_rx[port_id]);
 	diff_pkts_tx = counter_diff(port_stats.opackets, prev_pkts_tx[port_id]);
@@ -1581,10 +1613,10 @@ void dump_port_stats(struct app_context *app_context, u_int16_t port_id) {
 	mbps_tx = avg_ns(diff_bytes_tx, diff_ns);
 
 	printf("\nThroughput\n"
-		"RX-pps: %12" PRIu64 "\n"
-		"RX-bps: %12" PRIu64 "\n"
-		"TX-pps: %12" PRIu64 "\n"
-		"TX-bps: %12" PRIu64 "\n",
+		"RX-pps:\t%12" PRIu64 "\n"
+		"RX-bps:\t%12" PRIu64 "\n"
+		"TX-pps:\t%12" PRIu64 "\n"
+		"TX-bps:\t%12" PRIu64 "\n",
 		mpps_rx,
 		mbps_rx * 8,
 		mpps_tx,
