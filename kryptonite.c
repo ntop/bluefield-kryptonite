@@ -1451,8 +1451,8 @@ cleanup_ports:
 /*
  * Open a DOCA device according to a given PCI address
  */
-doca_error_t open_doca_device_with_pci(const char *pci_addr,
-				       struct doca_dev **retval /* out */) {
+doca_error_t open_doca_device(const char *pci_addr,
+			      struct doca_dev **retval /* out */) {
 	struct doca_devinfo **dev_list;
 	u_int32_t num_devs;
 	u_int16_t i;
@@ -1471,13 +1471,17 @@ doca_error_t open_doca_device_with_pci(const char *pci_addr,
 	for (i = 0; i < num_devs; i++) {
 		res = doca_devinfo_is_equal_pci_addr(dev_list[i], pci_addr, &is_equal);
 		if (res == DOCA_SUCCESS && is_equal) {
+			char pci_addr_i[DOCA_DEVINFO_PCI_ADDR_SIZE];
+			doca_devinfo_get_pci_addr_str(dev_list[i], pci_addr_i);
+
 			/* Check capabilities */
 			if (doca_flow_ct_cap_is_dev_supported(dev_list[i]) != DOCA_SUCCESS) {
-				char pci_addr_i[DOCA_DEVINFO_PCI_ADDR_SIZE];
-				doca_devinfo_get_pci_addr_str(dev_list[i], pci_addr_i);
-				DOCA_LOG_WARN("Required capabilities not available on %s", pci_addr_i);
-				res = DOCA_ERROR_INVALID_VALUE;
-				goto destroy_list;
+				DOCA_LOG_WARN("Required capabilities not available on %s, looking for other devices...", pci_addr_i);
+				continue;
+				//res = DOCA_ERROR_INVALID_VALUE;
+				//goto destroy_list;
+			} else {
+				DOCA_LOG_INFO("DOCA Flow CT capabilities available on %s", pci_addr_i);
 			}
 
 			/* Open device */
@@ -1487,7 +1491,7 @@ doca_error_t open_doca_device_with_pci(const char *pci_addr,
 		}
 	}
 
-	DOCA_LOG_WARN("Unable to find device. Available devices:");
+	DOCA_LOG_WARN("Unable to find matching or supported device. Available devices:");
 
 	for (i = 0; i < num_devs; i++) {
 		char pci_addr_i[DOCA_DEVINFO_PCI_ADDR_SIZE];
@@ -1847,7 +1851,7 @@ doca_error_t register_doca_param(const char *short_name,
 /*
  * Create/register application arguments
  */
-doca_error_t register_doca_params() {
+doca_error_t register_app_params() {
 	struct doca_argp_param *param;
 	doca_error_t rc;
 
@@ -1936,7 +1940,7 @@ int main(int argc, char **argv) {
 
 	doca_argp_set_dpdk_program(init_dpdk_env);
 
-	rc = register_doca_params();
+	rc = register_app_params();
 	if (rc != DOCA_SUCCESS) {
 		DOCA_LOG_ERR("Failure registering parameters: %s", doca_error_get_descr(rc));
 		goto cleanup_dpdk;
@@ -1982,7 +1986,7 @@ int main(int argc, char **argv) {
 
 	/* Open device */
 
-	rc = open_doca_device_with_pci(app_context->dev_pci_addr[0], &dev);
+	rc = open_doca_device(app_context->dev_pci_addr[0], &dev);
 	if (rc != DOCA_SUCCESS) {
 		DOCA_LOG_ERR("Failure opening Flow CT device: %s", doca_error_get_descr(rc));
 		goto cleanup_sw_ct;
