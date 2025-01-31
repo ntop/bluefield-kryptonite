@@ -247,7 +247,7 @@ doca_error_t create_rss_pipe(struct doca_flow_port *port,
 		goto destroy_pipe_cfg;
 	}
 
-	/* RSS queue (send matched traffic to queue 0) */
+	/* RSS queue (send matched traffic to specific RSS queues by index) */
 	for (i = 0; i < num_rss_queues; i++)
 		rss_queues[i] = i;
 	fwd.type = DOCA_FLOW_FWD_RSS;
@@ -311,6 +311,7 @@ doca_error_t create_flow_ct_pipe(struct doca_flow_port *port,
 		DOCA_LOG_ERR("Failure setting doca_flow_pipe_cfg: %s", doca_error_get_descr(rc));
 		goto destroy_pipe_cfg;
 	}
+
 	rc = doca_flow_pipe_cfg_set_match(cfg, &match, &mask);
 	if (rc != DOCA_SUCCESS) {
 		DOCA_LOG_ERR("Failure setting doca_flow_pipe_cfg match: %s", doca_error_get_descr(rc));
@@ -859,20 +860,19 @@ doca_error_t create_root_pipe(struct doca_flow_port *port,
 	}
 	doca_flow_pipe_cfg_destroy(pipe_cfg);
 
+	memset(&match, 0, sizeof(match));
 	fwd.type = DOCA_FLOW_FWD_PIPE;
 	fwd.next_pipe = fwd_pipe;
-
-	memset(&match, 0, sizeof(match));
-	rc = doca_flow_pipe_control_add_entry(0, 1, *pipe, &match, NULL, NULL, NULL, NULL, NULL, NULL, &fwd, status, NULL);
+	rc = doca_flow_pipe_control_add_entry(0, 1 /* prio */, *pipe, &match, NULL, NULL, NULL, NULL, NULL, NULL, &fwd, status, NULL);
 	if (rc != DOCA_SUCCESS) {
 		DOCA_LOG_ERR("Failure adding root pipe IPv4 entry: %s", doca_error_get_descr(rc));
 		return rc;
 	}
 
 	/* Drop non matching packets (none) */
-	fwd.type = DOCA_FLOW_FWD_DROP;
 	memset(&match, 0, sizeof(match));
-	rc = doca_flow_pipe_control_add_entry(0, 2, *pipe, &match, NULL, NULL, NULL, NULL, NULL, NULL, &fwd, status, NULL);
+	fwd.type = DOCA_FLOW_FWD_DROP;
+	rc = doca_flow_pipe_control_add_entry(0, 2 /* prio */, *pipe, &match, NULL, NULL, NULL, NULL, NULL, NULL, &fwd, status, NULL);
 	if (rc != DOCA_SUCCESS) {
 		DOCA_LOG_ERR("Failure adding root pipe drop entry: %s", doca_error_get_descr(rc));
 		return rc;
