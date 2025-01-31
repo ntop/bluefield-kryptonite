@@ -56,10 +56,9 @@
 //#define DEBUG
 
 //#define PROFILE_ADD_RATE
-//#define PROFILE_ADD_LATENCY
 
 #ifdef PROFILE_ADD_RATE
-#define PROFILE_ADD_RATE_N 2000000
+#define PROFILE_ADD_RATE_N 2000000 /* number of flows to be processed */
 #endif
 
 /**********************************************************/
@@ -514,14 +513,9 @@ doca_error_t run_capture(struct app_context *app_context,
 	doca_error_t rc;
 	int ret;
 	int i;
-#if defined(PROFILE_ADD_RATE) || defined(PROFILE_ADD_LATENCY)
-	u_int64_t profiling_start_ns = 0;
-#endif
 #ifdef PROFILE_ADD_RATE
+	u_int64_t profiling_start_ns = 0;
 	u_int64_t profiling_elaps_ns = 0;
-#endif
-#ifdef PROFILE_ADD_LATENCY
-	u_int64_t profiling_latency_ns = 0;
 #endif
 
 	DOCA_LOG_INFO("Running...");
@@ -567,14 +561,10 @@ doca_error_t run_capture(struct app_context *app_context,
 				}
 				if (ret >= 0) {
 					/* Already present: nothing to do */
-#ifdef PROFILE_ADD_LATENCY
-					clock_gettime(CLOCK_MONOTONIC_RAW, &now);
-					now_ns = SEC2NSEC(now.tv_sec) + now.tv_nsec;
-					profiling_latency_ns = now_ns - profiling_start_ns;
-#endif
+
 				} else {
 					/*** Add flow entry to CT ***/
-#if defined(PROFILE_ADD_RATE) || defined(PROFILE_ADD_LATENCY)
+#ifdef PROFILE_ADD_RATE
 					if (app_context->num_total_packets == 1) {
 						clock_gettime(CLOCK_MONOTONIC_RAW, &now);
 						now_ns = SEC2NSEC(now.tv_sec) + now.tv_nsec;
@@ -692,11 +682,6 @@ doca_error_t run_capture(struct app_context *app_context,
 
 	DOCA_LOG_INFO("Stopping packet processing...");
 	sleep(2);
-
-#ifdef PROFILE_ADD_LATENCY
-	DOCA_LOG_ERR("Add latency %.3f usec",
-		     (double) profiling_latency_ns/1000);
-#endif
 
 	return DOCA_SUCCESS;
 }
