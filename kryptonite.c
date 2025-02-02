@@ -54,7 +54,7 @@
 #define RSS_KEY_LEN	40
 
 //#define DEBUG
-
+#define ENABLE_OFFLOAD
 //#define PROFILE_ADD_RATE
 
 #ifdef PROFILE_ADD_RATE
@@ -559,6 +559,7 @@ doca_error_t run_capture(struct app_context *app_context,
 					/* Check in the (shadow) software flow table if already set */
 					ret = rte_hash_lookup_data(app_context->ct_status->sw_ct, &match_o, (void **) &sw_entry);
 				}
+#ifdef ENABLE_OFFLOAD
 				if (ret >= 0) {
 					/* Already present: nothing to do */
 
@@ -643,13 +644,14 @@ doca_error_t run_capture(struct app_context *app_context,
 									     (double) profiling_elaps_ns/1000,
 									     ((double) PROFILE_ADD_RATE_N/profiling_elaps_ns)*1000000);
 							}
-#endif
+#endif /* PROFILE_ADD_RATE */
 
 						}
 					} else {
 						DOCA_LOG_INFO("Already present?");
 					}
 				}
+#endif /* ENABLE_OFFLOAD */
 			}
 
 			if (app_context->enable_fwd) {
